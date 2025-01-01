@@ -8,7 +8,6 @@ use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Parallel\Worker\Worker;
 use function Amp\async;
-use Laminas\Db\Adapter\Driver\Mysqli\Connection as MysqliConnection;
 
 class ConnectionPool
 {
@@ -40,7 +39,7 @@ class ConnectionPool
 
         $this->deferredCancellation = new DeferredCancellation();
 
-        $this->push = static function (MysqliConnection $connection) use ($waiting, $idleConnections): void {
+        $this->push = static function (ParentConnection $connection) use ($waiting, $idleConnections): void {
             if ($waiting->isEmpty()) {
                 $idleConnections->push($connection);
             } else {
@@ -92,7 +91,7 @@ class ConnectionPool
     /**
      * @throws \RuntimeException
      */
-    private function pull(): MysqliConnection
+    private function pull(): ParentConnection
     {
         if (!$this->isRunning()) {
             throw new \RuntimeException("The pool was shut down");
@@ -112,8 +111,10 @@ class ConnectionPool
                     $pending = &$this->pendingCount;
                     $cancellation = $this->deferredCancellation->getCancellation();
                     $connectionStorage = $this->connectionStorage;
-                    $future = async(static function () use (&$pending, $factory, $connectionStorage, $cancellation)
-                    : MysqliConnection
+                    $future = async(
+                        static function ()
+                            use (&$pending, $factory, $connectionStorage, $cancellation)
+                            : ParentConnection
                     {
                         try {
                             $connection = $factory($cancellation);
@@ -150,7 +151,7 @@ class ConnectionPool
 
             return $connection;
 
-            \assert($connection instanceof MysqliConnection);
+            \assert($connection instanceof ParentConnection);
 
             $this->connectionStorage->detach($connection);
         } while (true);

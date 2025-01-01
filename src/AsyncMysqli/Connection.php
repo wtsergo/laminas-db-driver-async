@@ -8,8 +8,10 @@ use Laminas\Db\Adapter\Exception;
 
 class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
 {
+    public const MAX_CONNECTION_RETRIES = 10;
     protected PooledLink $pooledLink;
     protected \WeakReference $driverRef;
+    private static $mysqliReport;
 
     public function __construct($connectionInfo = null)
     {
@@ -20,6 +22,7 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
                 sprintf('$connection must be instance of %s', PooledLink::class)
             );
         }
+        self::$mysqliReport ??= \mysqli_report(\MYSQLI_REPORT_ERROR | \MYSQLI_REPORT_STRICT);
     }
     public function getCurrentSchema()
     {
@@ -28,10 +31,7 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
         }
 
         //$result = $this->getResource()->query('SELECT DATABASE()');
-        $result = $this->getResource()->query('SELECT DATABASE()', \MYSQLI_ASYNC);
-        if ($result === false) {
-            throw new Exception\RuntimeException(\mysqli_error($this->mysqli));
-        }
+        $this->queryWithRetry('SELECT DATABASE()', \MYSQLI_ASYNC);
 
         $suspension = EventLoop::getSuspension();
 
@@ -62,11 +62,7 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
         }
 
         //$result = $this->getResource()->query($sql);
-        $result = $this->getResource()->query($sql, \MYSQLI_ASYNC);
-
-        if ($result === false) {
-            throw new Exception\RuntimeException(\mysqli_error($this->getResource()));
-        }
+        $this->queryWithRetry($sql, \MYSQLI_ASYNC);
 
         $suspension = EventLoop::getSuspension();
 
@@ -88,9 +84,46 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
         return $this->getDriver()->createResult($result === true ? $this->getResource() : $result);
     }
 
+    public function query(string $query, int $resultMode)
+    {
+        return $this->queryWithRetry($query, $resultMode);
+    }
+
+    private function queryWithRetry(string $query, int $resultMode)
+    {
+        $connectionErrors = [
+            2006, // SQLSTATE[HY000]: General error: 2006 MySQL server has gone away
+            2013,  // SQLSTATE[HY000]: General error: 2013 Lost connection to MySQL server during query
+        ];
+        $triesCount = 0;
+        do {
+            $retry = false;
+            try {
+                return $this->getResource()->query($query, $resultMode);
+            } catch (\mysqli_sql_exception $e) {
+                if ($triesCount < Connection::MAX_CONNECTION_RETRIES
+                    && in_array($e->getCode(), $connectionErrors)
+                ) {
+                    $retry = true;
+                    $triesCount++;
+                    $this->getParentConnection()->reConnect();
+                }
+
+                if (!$retry) {
+                    throw $e;
+                }
+            }
+        } while ($retry);
+    }
+
+    public function getParentConnection(): ParentConnection
+    {
+        return $this->pooledLink->link;
+    }
+
     public function getResource($pooled=false)
     {
-        return $pooled ? $this->pooledLink : $this->pooledLink->link;
+        return $pooled ? $this->pooledLink : $this->pooledLink->link->getResource();
     }
 
     public function setResource(\mysqli $resource)

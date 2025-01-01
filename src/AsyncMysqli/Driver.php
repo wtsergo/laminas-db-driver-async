@@ -64,7 +64,7 @@ class Driver extends \Laminas\Db\Adapter\Driver\Mysqli\Mysqli
             if (! $this->connection->isConnected()) {
                 $this->connection->connect();
             }
-            $statement->asyncInitialize($this->connection->getResource(true));
+            $statement->asyncInitialize($this->connection);
         }
         return $statement;
     }

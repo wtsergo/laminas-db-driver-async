@@ -39,7 +39,7 @@ class LinkPool
 
         $this->deferredCancellation = new DeferredCancellation();
 
-        $this->push = static function (\mysqli $link) use ($waiting, $idleLinks): void {
+        $this->push = static function (ParentConnection $link) use ($waiting, $idleLinks): void {
             if ($waiting->isEmpty()) {
                 $idleLinks->push($link);
             } else {
@@ -91,7 +91,7 @@ class LinkPool
     /**
      * @throws \RuntimeException
      */
-    private function pull(): \mysqli
+    private function pull(): ParentConnection
     {
         if (!$this->isRunning()) {
             throw new \RuntimeException("The pool was shut down");
@@ -99,7 +99,7 @@ class LinkPool
 
         do {
             if ($this->idleLinks->isEmpty()) {
-                /** @var DeferredFuture<\mysqli|null> $deferredFuture */
+                /** @var DeferredFuture<MysqliConnection|null> $deferredFuture */
                 $deferredFuture = new DeferredFuture;
                 $this->waiting->enqueue($deferredFuture);
 
@@ -111,7 +111,7 @@ class LinkPool
                     $pending = &$this->pendingCount;
                     $cancellation = $this->deferredCancellation->getCancellation();
                     $linkStorage = $this->linkStorage;
-                    $future = async(static function () use (&$pending, $factory, $linkStorage, $cancellation): \mysqli {
+                    $future = async(static function () use (&$pending, $factory, $linkStorage, $cancellation): ParentConnection {
                         try {
                             $link = $factory($cancellation);
                         } catch (CancelledException) {
@@ -147,7 +147,7 @@ class LinkPool
 
             return $link;
 
-            \assert($link instanceof \mysqli);
+            \assert($link instanceof ParentConnection);
 
             $this->linkStorage->detach($link);
         } while (true);

@@ -5,10 +5,10 @@ namespace Wtsergo\LaminasDbDriverAsync\AsyncMysqli;
 class PooledLink
 {
     /**
-     * @param \Closure(\mysqli):void $push Closure to push the mysqli link back into the queue.
+     * @param \Closure(ParentConnection):void $push Closure to push the mysqli link back into the queue.
      */
     public function __construct(
-        public readonly \mysqli  $link,
+        public readonly ParentConnection  $link,
         private readonly \Closure $push
     ) {
     }

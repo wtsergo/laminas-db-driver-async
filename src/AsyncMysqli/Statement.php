@@ -52,9 +52,10 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
         }
 
         //$result = $this->mysqli()->query($this->bindedSql);
-        $result = $this->mysqli()->query($this->bindedSql, \MYSQLI_ASYNC);
-        if ($result === false) {
-            throw new Exception\RuntimeException(\mysqli_error($this->mysqli()));
+        try {
+            $this->getConnection()->query($this->bindedSql, \MYSQLI_ASYNC);
+        } catch (\mysqli_sql_exception $exception) {
+            throw new Exception\RuntimeException($exception->getMessage(), previous: $exception);
         }
 
         $suspension = EventLoop::getSuspension();
@@ -85,16 +86,24 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
         return $this->getDriver()->createResult($result===true ? $this->mysqli() : $result, $buffered);
     }
 
-    protected \WeakReference $pooledLink;
-    public function asyncInitialize(PooledLink $pooledLink): self
+    /**
+     * @var \WeakReference<Connection>
+     */
+    protected \WeakReference $connection;
+    public function asyncInitialize(Connection $connection): self
     {
-        $this->pooledLink = \WeakReference::create($pooledLink);
+        $this->connection = \WeakReference::create($connection);
         return $this;
+    }
+
+    protected function getConnection(): Connection
+    {
+        return $this->connection->get();
     }
 
     protected function mysqli(): \mysqli
     {
-        return $this->pooledLink->get()->link;
+        return $this->connection->get()->getResource();
     }
 
     public function initialize(\mysqli $mysqli)
