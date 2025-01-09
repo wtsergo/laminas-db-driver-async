@@ -17,7 +17,6 @@ use Amp\Parallel\Worker\Execution;
 use Amp\Parallel\Worker\Task;
 use Amp\Parallel\Worker\Worker;
 use Amp\Parallel\Worker\WorkerException;
-use Amp\Pipeline\Queue;
 use Amp\Sync\ChannelException;
 use Amp\Sync\LocalMutex;
 use Amp\Sync\Mutex;
@@ -26,7 +25,6 @@ use Revolt\EventLoop;
 use function Amp\async;
 use Amp\Parallel\Worker\Internal;
 use function Amp\Sync\synchronized;
-use function Unirgy\Core\dumpDebugBacktrace;
 
 class SyncContextWorker implements Worker
 {
