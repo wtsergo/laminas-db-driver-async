@@ -163,6 +163,23 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
         return $this;
     }
 
+    public function rollback()
+    {
+        if (! $this->isConnected()) {
+            throw new Exception\RuntimeException('Must be connected before you can rollback.');
+        }
+
+        if (! $this->inTransaction) {
+            throw new Exception\RuntimeException('Must call beginTransaction() before you can rollback.');
+        }
+
+        $this->getResource()->rollback();
+        $this->getResource()->autocommit(true);
+        $this->inTransaction = false;
+
+        return $this;
+    }
+
     public function getLastGeneratedValue($name = null)
     {
         return $this->getResource()->insert_id;

@@ -52,6 +52,7 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
         }
 
         //$result = $this->mysqli()->query($this->bindedSql);
+        //var_dump($this->bindedSql);
         try {
             $this->getConnection()->query($this->bindedSql, \MYSQLI_ASYNC);
         } catch (\mysqli_sql_exception $exception) {
