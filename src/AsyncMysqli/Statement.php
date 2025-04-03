@@ -63,10 +63,18 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
 
         EventLoop::onMysqli($this->mysqli(), static function (string $callbackId, \mysqli $link) use ($suspension) {
             \Revolt\EventLoop::cancel($callbackId);
-            $suspension->resume($link->reap_async_query());
+            try {
+                $suspension->resume($link->reap_async_query());
+            } catch (\Throwable $error) {
+                $suspension->throw($error);
+            }
         });
 
-        $result = $suspension->suspend();
+        try {
+            $result = $suspension->suspend();
+        } catch (\Throwable $error) {
+            throw new Exception\RuntimeException($error->getMessage(), previous: $error);
+        }
 
         if ($this->profiler) {
             $this->profiler->profilerFinish();
