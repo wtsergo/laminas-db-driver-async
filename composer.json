@@ -5,7 +5,7 @@
         "php": "^8.1",
         "amphp/amp": "^3.0.2",
         "amphp/parallel": "^2.3.1",
-        "laminas/laminas-db": "dev-wtsergo/2.20.0 as 2.20.0",
+        "wtsergo/laminas-db": "dev-2.20.0||2.20.0",
         "ext-pdo": "*"
     },
     "license": [
