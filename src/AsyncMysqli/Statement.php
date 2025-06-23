@@ -51,30 +51,7 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
             $this->profiler->profilerStart($this);
         }
 
-        //$result = $this->mysqli()->query($this->bindedSql);
-        //var_dump($this->bindedSql);
-        try {
-            $this->getConnection()->query($this->bindedSql, \MYSQLI_ASYNC);
-        } catch (\mysqli_sql_exception $exception) {
-            throw new Exception\RuntimeException($exception->getMessage(), previous: $exception);
-        }
-
-        $suspension = EventLoop::getSuspension();
-
-        EventLoop::onMysqli($this->mysqli(), static function (string $callbackId, \mysqli $link) use ($suspension) {
-            \Revolt\EventLoop::cancel($callbackId);
-            try {
-                $suspension->resume($link->reap_async_query());
-            } catch (\Throwable $error) {
-                $suspension->throw($error);
-            }
-        });
-
-        try {
-            $result = $suspension->suspend();
-        } catch (\Throwable $error) {
-            throw new Exception\RuntimeException($error->getMessage(), previous: $error);
-        }
+        $result = $this->executeWithRetry();
 
         if ($this->profiler) {
             $this->profiler->profilerFinish();
@@ -93,6 +70,63 @@ class Statement extends \Laminas\Db\Adapter\Driver\Mysqli\Statement
         }
 
         return $this->getDriver()->createResult($result===true ? $this->mysqli() : $result, $buffered);
+    }
+
+    private function executeWithRetry(): mixed
+    {
+        $result = false;
+        $connectionErrors = [
+            2006, // SQLSTATE[HY000]: General throwable: 2006 MySQL server has gone away
+            2013,  // SQLSTATE[HY000]: General throwable: 2013 Lost connection to MySQL server during query
+        ];
+        $retryErrors = array_merge(
+            $connectionErrors,
+            [
+                1213, // Deadlock found when trying to get lock; try restarting transaction
+            ]
+        );
+        $triesCount = 0;
+        do {
+            $retry = false;
+            try {
+                //$result = $this->mysqli()->query($this->bindedSql);
+                //var_dump($this->bindedSql);
+                $this->getConnection()->query($this->bindedSql, \MYSQLI_ASYNC);
+
+                $suspension = EventLoop::getSuspension();
+
+                EventLoop::onMysqli(
+                    $this->mysqli(),
+                    static function (string $callbackId, \mysqli $link) use ($suspension) {
+                        \Revolt\EventLoop::cancel($callbackId);
+                        try {
+                            $suspension->resume($link->reap_async_query());
+                        } catch (\Throwable $throwable) {
+                            $suspension->throw($throwable);
+                        }
+                    }
+                );
+
+                $result = $suspension->suspend();
+
+            } catch (\mysqli_sql_exception $throwable) {
+                if ($triesCount < Connection::MAX_CONNECTION_RETRIES
+                    && in_array($throwable->getCode(), $retryErrors)
+                ) {
+                    $retry = true;
+                    $triesCount++;
+                    if (in_array($throwable->getCode(), $connectionErrors)) {
+                        $this->getConnection()->getParentConnection()->reConnect();
+                    }
+                }
+
+                if (!$retry) {
+                    throw new Exception\RuntimeException($throwable->getMessage(), previous: $throwable);
+                }
+            }
+        } while ($retry);
+
+        return $result;
     }
 
     /**

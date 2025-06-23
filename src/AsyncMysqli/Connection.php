@@ -92,25 +92,33 @@ class Connection extends \Laminas\Db\Adapter\Driver\Mysqli\Connection
     private function queryWithRetry(string $query, int $resultMode)
     {
         $connectionErrors = [
-            2006, // SQLSTATE[HY000]: General error: 2006 MySQL server has gone away
-            2013,  // SQLSTATE[HY000]: General error: 2013 Lost connection to MySQL server during query
+            2006, // SQLSTATE[HY000]: General throwable: 2006 MySQL server has gone away
+            2013,  // SQLSTATE[HY000]: General throwable: 2013 Lost connection to MySQL server during query
         ];
+        $retryErrors = array_merge(
+            $connectionErrors,
+            [
+                1213, // Deadlock found when trying to get lock; try restarting transaction
+            ]
+        );
         $triesCount = 0;
         do {
             $retry = false;
             try {
                 return $this->getResource()->query($query, $resultMode);
-            } catch (\mysqli_sql_exception $e) {
+            } catch (\mysqli_sql_exception $throwable) {
                 if ($triesCount < Connection::MAX_CONNECTION_RETRIES
-                    && in_array($e->getCode(), $connectionErrors)
+                    && in_array($throwable->getCode(), $retryErrors)
                 ) {
                     $retry = true;
                     $triesCount++;
-                    $this->getParentConnection()->reConnect();
+                    if (in_array($throwable->getCode(), $connectionErrors)) {
+                        $this->getParentConnection()->reConnect();
+                    }
                 }
 
                 if (!$retry) {
-                    throw $e;
+                    throw $throwable;
                 }
             }
         } while ($retry);
