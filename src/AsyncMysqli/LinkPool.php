@@ -124,12 +124,14 @@ class LinkPool
                         return $link;
                     });
 
-                    $waiting = $this->waiting;
-                    $deferredCancellation = $this->deferredCancellation;
                     $future
                         ->map($this->push)
-                        ->catch(static function (\Throwable $e) use ($deferredCancellation, $linkStorage, $deferredFuture): void {
-                            $deferredCancellation->cancel();
+                        ->catch(static function (\Throwable $e) use ($deferredFuture): void {
+                            // Fail this one waiter only. Do NOT cancel the pool's
+                            // deferredCancellation — a single factory failure (transient
+                            // MySQL unavailability, momentary worker-spawn hiccup, etc.)
+                            // must not poison the whole pool for the lifetime of the
+                            // PHP process. Subsequent getLink() calls retry cleanly.
                             $deferredFuture->error($e);
                         })
                         ->ignore()
